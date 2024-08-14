@@ -57,7 +57,7 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
         self.weight_decay_at_y = weight_decay_at_y
         self.weight_lr_power = weight_lr_power
         self.r = r
-        self.step = 0
+        self.step_count = 0
         self.momentum = momentum
         self.train_mode = False
 
@@ -122,7 +122,7 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
             with torch.enable_grad():
                 loss = closure()
 
-        if self.step==0:
+        if self.step_count==0:
             self.base.step()
 
         for group in self.param_groups:
@@ -152,7 +152,7 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
 
         #######
         # Apply step to z
-        if self.step > 0:
+        if self.step_count > 0:
             self.base.step()
 
         ######
@@ -186,5 +186,5 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
                 p.lerp_(end=state['z'], weight=1-self.momentum)
 
             group['k'] = k+1
-        self.step += 1
+        self.step_count += 1
         return loss
