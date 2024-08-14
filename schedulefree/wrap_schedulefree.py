@@ -47,19 +47,19 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
             (default 2.0).
     """
     def __init__(self, 
-                 base : torch.optim.Optimizer,
-                 base_type:any, 
                  weight_decay_at_y : float = 0.0,
                  momentum : float = 0.9,
                  weight_lr_power : float = 2,
                  r : float = 0):
 
-        self.base = base_type(base)
         self.weight_decay_at_y = weight_decay_at_y
         self.weight_lr_power = weight_lr_power
         self.r = r
         self.momentum = momentum
         self.train_mode = False
+
+    def base_init(self,base_type:any,**karg):
+        self.base = base_type(**karg)
 
 
     def add_param_group(self, param_group):
