@@ -6,7 +6,7 @@
 import torch
 import torch.optim
 
-class ScheduleFreeWrapper:
+class ScheduleFreeWrapper(torch.optim.Optimizer):
     r"""
         Wrap any optimizer to make it Schedule-Free. 
         
