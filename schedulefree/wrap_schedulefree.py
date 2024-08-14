@@ -6,7 +6,7 @@
 import torch
 import torch.optim
 
-class ScheduleFreeWrapper:
+class ScheduleFreeWrapper(torch.optim.Optimizer):
     r"""
         Wrap any optimizer to make it Schedule-Free. 
         
@@ -57,6 +57,7 @@ class ScheduleFreeWrapper:
         self.weight_decay_at_y = weight_decay_at_y
         self.weight_lr_power = weight_lr_power
         self.r = r
+        self.step = 0
         self.momentum = momentum
         self.train_mode = False
 
@@ -121,6 +122,9 @@ class ScheduleFreeWrapper:
             with torch.enable_grad():
                 loss = closure()
 
+        if self.step==0:
+            self.base.step()
+
         for group in self.param_groups:
             lr = group['lr']
             for p in group['params']:
@@ -148,7 +152,8 @@ class ScheduleFreeWrapper:
 
         #######
         # Apply step to z
-        self.base.step()
+        if self.step > 0:
+            self.base.step()
 
         ######
         for group in self.param_groups:
@@ -181,5 +186,5 @@ class ScheduleFreeWrapper:
                 p.lerp_(end=state['z'], weight=1-self.momentum)
 
             group['k'] = k+1
-
+        self.step += 1
         return loss
