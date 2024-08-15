@@ -128,15 +128,20 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
             self.base.step()
 
         for group in self.param_groups:
+            d = group.get('d', 1.0)
             lr = group['lr']
+            lr = lr*d
             for p in group['params']:
                 if p.grad is None:
                     continue
+                if p.dtype in {torch.float16, torch.bfloat16}:
+                    p = p.float()
                 state = self.state[p]
 
                 if 'z' not in state:
                     state['z'] = torch.clone(p)
-                    state['z'] = state['z'].to(dtype=torch.float)
+                    if state['z'].dtype in {torch.float16, torch.bfloat16}:
+                        state['z'] = state['z'].float()
 
                 z = state['z']
 
@@ -168,6 +173,7 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
               d = (k+1) / self.warmup_steps
             else:
               d = 1.0
+            group['d'] = d
 
             lr = group['lr']*d
             lr_max = group['lr_max'] = max(lr, group.get('lr_max', 0))
@@ -180,7 +186,8 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
             for p in group['params']:
                 if p.grad is None:
                     continue
-                
+                if p.dtype in {torch.float16, torch.bfloat16}:
+                    p = p.float()
                 state = self.state[p]
                 z = state['z']
 
