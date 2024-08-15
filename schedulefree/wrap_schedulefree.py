@@ -136,6 +136,7 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
 
                 if 'z' not in state:
                     state['z'] = torch.clone(p)
+                    state['z'] = state['z'].to(dtype=torch.float)
 
                 z = state['z']
 
