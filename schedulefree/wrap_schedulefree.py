@@ -90,7 +90,7 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
                     state = self.state[p]
                     if 'z' in state:
                         # Set p to x
-                        p.lerp_(end=state['z'], weight=1-1/self.momentum)
+                        p.lerp_(end=state['z'].to(p.data.device), weight=1-1/self.momentum)
         self.train_mode = False
 
     @torch.no_grad()
@@ -101,7 +101,7 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
                     state = self.state[p]
                     if 'z' in state:
                         # Set p to y
-                        p.lerp_(end=state['z'], weight=1-self.momentum)
+                        p.lerp_(end=state['z'].to(p.data.device), weight=1-self.momentum)
         self.train_mode = True
 
     @staticmethod
