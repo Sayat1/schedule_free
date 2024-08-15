@@ -50,12 +50,14 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
                  base : torch.optim.Optimizer, 
                  weight_decay_at_y : float = 0.0,
                  momentum : float = 0.9,
+                 warmup_steps: int = 0,
                  weight_lr_power : float = 2,
                  r : float = 0):
 
         self.base = base
         self.weight_decay_at_y = weight_decay_at_y
         self.weight_lr_power = weight_lr_power
+        self.warmup_steps = warmup_steps
         self.r = r
         self.step_count = 0
         self.momentum = momentum
@@ -161,6 +163,11 @@ class ScheduleFreeWrapper(torch.optim.Optimizer):
             r = self.r
             k = group.get('k', 0)
             d = group.get('d', 1.0)
+            if k < self.warmup_steps:
+              d = (k+1) / self.warmup_steps
+            else:
+              d = 1.0
+
             lr = group['lr']*d
             lr_max = group['lr_max'] = max(lr, group.get('lr_max', 0))
             
