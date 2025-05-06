@@ -239,78 +239,51 @@ class AdamWScheduleFree(torch.optim.Optimizer):
                     self.state[p]['z'] = p.detach().clone(memory_format=torch.preserve_format)
                     self.state[p]['exp_avg_sq'] = torch.zeros_like(p.grad, memory_format=torch.preserve_format).detach()
 
-            if group['foreach'] and len(active_p) > 0:
-                y, grad, exp_avg_sq, z = zip(*[(p.data, 
-                                                p.grad, 
-                                                self.state[p]['exp_avg_sq'], 
-                                                self.state[p]['z']) 
-                                                for p in active_p])
+            for p in active_p:
+                state = self.state[p]
+                z_state = state['z']
+                stochastic = group['stochastic_rounding']
 
-                # Decay the first and second moment running average coefficient
-                torch._foreach_mul_(exp_avg_sq, beta2)
-                torch._foreach_addcmul_(exp_avg_sq, grad, grad, value=1-beta2)
-                denom = torch._foreach_sqrt(exp_avg_sq)
-                torch._foreach_add_(denom, eps)
+                y, z = (p.float(), z_state.float()) if stochastic else (p, z_state)
+                grad = p.grad.to(dtype=torch.float32, copy=True)
+                
 
-                # Normalize grad in-place for memory efficiency
-                torch._foreach_div_(grad, denom)
+                update = None
+                
+                
+                weight_sum = group['weight_sum']
 
-                # Weight decay calculated at y
-                if decay != 0:
-                    torch._foreach_add_(grad, y, alpha=decay)
+                #update_second_moment
+                exp_avg_sq = state['exp_avg_sq']
+                exp_avg_sq.mul_(beta2 * d_k * d_k).addcmul_(grad, grad, value=1-beta2)
+                denom = exp_avg_sq.sqrt()
 
-                # These operations update y in-place,
-                # without computing x explicitly.
-                torch._foreach_lerp_(y, z, weight=ckp1)
-                torch._foreach_add_(y, grad, alpha=lr*(beta1*(1-ckp1)-1))
+                #update_
+                update = grad.div_(denom.add_(eps))
+                del denom
+                
+                if update is not None:
+                    #update_params
+                    weight = lr ** 2
+                    weight_sum = group['weight_sum'] + weight
+                    ckp1 = weight / weight_sum if weight_sum else 0
 
-                # z step
-                torch._foreach_sub_(z, grad, alpha=lr)
-            else:
-                for p in active_p:
-                    z_state = state['z']
-                    stochastic = group['stochastic_rounding']
+                    xy_step = 1 - beta1 * (1 - ckp1)
 
-                    y, z = (p.float(), z_state.float()) if stochastic else (p, z_state)
-                    grad = p.grad.to(dtype=torch.float32, copy=True)
-                    
+                    y.lerp_(end=z, weight=ckp1)
 
-                    update = None
-                    state = self.state[p]
-                    
-                    weight_sum = group['weight_sum']
+                    if decay != 0:
+                        decay *= lr
+                        z.sub_(y, alpha=decay)
+                        y.sub_(y, alpha=decay * xy_step)
 
-                    #update_second_moment
-                    exp_avg_sq = state['exp_avg_sq']
-                    exp_avg_sq.mul_(beta2 * d_k * d_k).addcmul_(grad, grad, value=1-beta2)
-                    denom = exp_avg_sq.sqrt()
+                    z.sub_(update, alpha=lr)
+                    y.sub_(update, alpha=lr * xy_step)
 
-                    #update_
-                    update = grad.div_(denom.add_(eps))
-                    del denom
-                    
-                    if update is not None:
-                        #update_params
-                        weight = lr ** 2
-                        weight_sum = group['weight_sum'] + weight
-                        ckp1 = weight / weight_sum if weight_sum else 0
+                    self.smart_copy(p, y, stochastic, True)
+                    self.smart_copy(z_state, z, stochastic, True)
 
-                        xy_step = 1 - beta1 * (1 - ckp1)
-
-                        y.lerp_(end=z, weight=ckp1)
-
-                        if decay != 0:
-                            decay *= lr
-                            z.sub_(y, alpha=decay)
-                            y.sub_(y, alpha=decay * xy_step)
-
-                        z.sub_(update, alpha=lr)
-                        y.sub_(update, alpha=lr * xy_step)
-
-                        self.smart_copy(p, y, stochastic, True)
-                        self.smart_copy(z_state, z, stochastic, True)
-
-                        del update
+                    del update
 
             group['weight_sum'] = weight_sum
             group['k'] = k+1
