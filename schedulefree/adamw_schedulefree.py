@@ -132,28 +132,30 @@ class AdamWScheduleFree(torch.optim.Optimizer):
 
         self.kohya_original_patch_adafactor_fused = None
 
+    @torch.no_grad()
     def eval(self):
         for group in self.param_groups:
             train_mode = group['train_mode']
             beta1, _ = group['betas']
             if train_mode:
                 for p in group['params']:
-                    state = self.state[p]
-                    if 'z' in state:
-                        # Set p.data to x
-                        p.data.lerp_(end=state['z'].to(p.data.device), weight=1-1/beta1)
+                    z = self.state[p].get('z')
+                    if z is not None:
+                        # Set p to x
+                        p.lerp_(end=z.to(device=p.device), weight=1 - 1 / beta1)
                 group['train_mode'] = False
 
+    @torch.no_grad()
     def train(self):
         for group in self.param_groups:
             train_mode = group['train_mode']
             beta1, _ = group['betas']
             if not train_mode:
                 for p in group['params']:
-                    state = self.state[p]
-                    if 'z' in state:
-                        # Set p.data to y
-                        p.data.lerp_(end=state['z'].to(p.data.device), weight=1-beta1)
+                    z = self.state[p].get('z')
+                    if z is not None:
+                        # Set p to y
+                        p.lerp_(end=z.to(device=p.device), weight=1 - beta1)
                 group['train_mode'] = True
 
     # Implementation by Nerogar. From: https://github.com/pytorch/pytorch/issues/120376#issuecomment-1974828905
@@ -221,7 +223,6 @@ class AdamWScheduleFree(torch.optim.Optimizer):
             bias_correction2 = 1
             lr = group['lr']*sched*math.sqrt(bias_correction2)
             
-            lr_max = group['lr_max'] = max(lr, group['lr_max'])
             if group['lr_prev'] == -1.0:
                 d_k = group['d_k'] = 1
             else:
