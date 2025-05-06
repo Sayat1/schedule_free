@@ -227,7 +227,7 @@ class AdamWScheduleFree(torch.optim.Optimizer):
         beta1, _ = group['betas']
         decay = group['weight_decay']
     
-        if group['weight_decay_by_lr']:
+        if decay != 0:
             decay *= dlr
 
         weight = dlr ** 2
