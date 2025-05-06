@@ -75,6 +75,7 @@ class AdamWScheduleFree(torch.optim.Optimizer):
                         stochastic_rounding=stochastic_rounding,
                         foreach=foreach)
         super().__init__(params, defaults)
+        print("AdamW Schedule-Free optimizer initialized. PDP1.9.1")
         self.fused_back_pass = False
         self.try_hook_kohya_fbp()
 
