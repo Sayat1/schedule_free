@@ -201,6 +201,53 @@ class AdamWScheduleFree(torch.optim.Optimizer):
         if smart_delete_source:
             del source
 
+    def get_denom(self, state, group):
+        exp_avg_sq = state['exp_avg_sq']
+        denom = exp_avg_sq.sqrt()
+        return denom
+
+
+    def update_second_moment(self, state, group, grad, beta2, d_k):
+        exp_avg_sq = state['exp_avg_sq']
+
+        denom = None
+
+        exp_avg_sq.mul_(beta2 * d_k * d_k).addcmul_(grad, grad, value=1 - beta2)
+
+        denom = self.get_denom(state, group)
+        return denom
+
+    def update_(self, num, denom, group, w):
+        eps = group['eps']
+        update = num.div_(denom.add_(eps))
+        return update
+
+    @torch.no_grad()
+    def update_params(self, y, z, update, group, dlr):
+        beta1, _ = group['betas']
+        decay = group['weight_decay']
+    
+        if group['weight_decay_by_lr']:
+            decay *= dlr
+
+        weight = dlr ** 2
+        weight_sum = group['weight_sum'] + weight
+        ckp1 = weight / weight_sum if weight_sum else 0
+
+        xy_step = 1 - beta1 * (1 - ckp1)
+
+        y.lerp_(end=z, weight=ckp1)
+
+        if decay != 0:
+            # Weight decay at Y.
+            z.sub_(y, alpha=decay)
+            y.sub_(y, alpha=decay * xy_step)
+
+        z.sub_(update, alpha=dlr)
+        y.sub_(update, alpha=dlr * xy_step)
+
+        return weight_sum
+
     @torch.no_grad()
     def step(self, closure=None):
         """Performs a single optimization step.
@@ -258,40 +305,22 @@ class AdamWScheduleFree(torch.optim.Optimizer):
                 stochastic = group['stochastic_rounding']
 
                 y, z = (p.float(), z_state.float()) if stochastic else (p, z_state)
-                grad = p.grad.to(dtype=torch.float32, copy=True)
-                
+                grad = p.grad.to(dtype=torch.float32, copy=True)   
 
                 update = None
-                
                 
                 weight_sum = group['weight_sum']
 
                 #update_second_moment
-                exp_avg_sq = state['exp_avg_sq']
-                exp_avg_sq.mul_(beta2 * d_k * d_k).addcmul_(grad, grad, value=1-beta2)
-                denom = exp_avg_sq.sqrt()
+                denom = self.update_second_moment(state, group, grad, beta2, d_k)
 
                 #update_
-                update = grad.div_(denom.add_(eps))
+                update = self.update_(grad, denom, group, y)
                 del denom
                 
                 if update is not None:
                     #update_params
-                    weight = lr ** 2
-                    weight_sum = group['weight_sum'] + weight
-                    ckp1 = weight / weight_sum if weight_sum else 0
-
-                    xy_step = 1 - beta1 * (1 - ckp1)
-
-                    y.lerp_(end=z, weight=ckp1)
-
-                    if decay != 0:
-                        decay *= lr
-                        z.sub_(y, alpha=decay)
-                        y.sub_(y, alpha=decay * xy_step)
-
-                    z.sub_(update, alpha=lr)
-                    y.sub_(update, alpha=lr * xy_step)
+                    weight_sum = self.update_params(y, z, update, group, lr)
 
                     self.smart_copy(p, y, stochastic, True)
                     self.smart_copy(z_state, z, stochastic, True)
