@@ -132,6 +132,18 @@ class AdamWScheduleFree(torch.optim.Optimizer):
 
         self.kohya_original_patch_adafactor_fused = None
 
+
+    @property
+    def supports_memory_efficient_fp16(self):
+        return False
+
+    @property
+    def supports_flat_params(self):
+        return True
+    
+    def supports_fused_back_pass(self):
+        return True
+
     @torch.no_grad()
     def eval(self):
         for group in self.param_groups:
